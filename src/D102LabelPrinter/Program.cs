@@ -13,11 +13,11 @@ static class Program
     {
         // Velopack: 설치/업데이트/제거 훅 처리(반드시 최상단). 확장도 함께 등록.
         VelopackApp.Build()
-            .OnAfterInstallFastCallback(_ => ChromeExt.Register())
-            .OnAfterUpdateFastCallback(_ => ChromeExt.Register())
-            .OnBeforeUninstallFastCallback(_ => ChromeExt.Unregister())
+            .OnAfterInstallFastCallback(_ => { try { ChromeExt.WritePolicy(); } catch { } })
+            .OnBeforeUninstallFastCallback(_ => { try { ChromeExt.Unregister(); } catch { } })
             .Run();
 
+        if (args.Length >= 1 && args[0] == "--register-ext") { ChromeExt.WritePolicy(); return; }  // 관리자 승격 인스턴스
         if (args.Length >= 2 && args[0] == "--selftest") { SelfTest.Run(args[1]); return; }
 
         using var mutex = new Mutex(true, "D102LabelPrinter_singleton", out bool isNew);
@@ -25,6 +25,7 @@ static class Program
 
         ApplicationConfiguration.Initialize();
         AppState.Load();
+        try { ChromeExt.WritePolicy(); } catch { }   // 권한 있으면 정책 기록(없으면 무시)
 
         _ = Updater.CheckAsync();   // 백그라운드 자동업데이트 확인
 
@@ -58,6 +59,33 @@ static class Program
         var test = new ToolStripMenuItem("테스트 인쇄");
         test.Click += (_, _) => Printing.TestPrint();
         menu.Items.Add(test);
+
+        var regAuto = new ToolStripMenuItem("크롬에 확장 설치 (자동·관리자)");
+        regAuto.Click += (_, _) =>
+        {
+            bool ok = ChromeExt.RegisterElevated();
+            MessageBox.Show(ok
+                ? "확장 등록 완료.\n크롬을 완전히 닫았다가(트레이/작업관리자에 chrome 없게) 다시 여세요.\n그래도 안 보이면 \"확장 수동 설치\"를 쓰세요."
+                : "자동 설치 실패(관리자 취소 또는 정책 미적용).\n\"확장 수동 설치(폴더 열기)\"로 진행하세요.",
+                "D102 라벨 인쇄", MessageBoxButtons.OK,
+                ok ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+        };
+        menu.Items.Add(regAuto);
+
+        var regManual = new ToolStripMenuItem("확장 수동 설치 (폴더 열기)");
+        regManual.Click += (_, _) =>
+        {
+            try { System.Diagnostics.Process.Start("explorer.exe", $"\"{ChromeExt.BundledExtensionDir}\""); } catch { }
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("chrome.exe", "chrome://extensions") { UseShellExecute = true }); } catch { }
+            MessageBox.Show(
+                "크롬 확장 수동 설치:\n\n" +
+                "1) 열린 chrome://extensions 에서 우측 상단 \"개발자 모드\" 켜기\n" +
+                "2) \"압축해제된 확장 프로그램을 로드\" 클릭\n" +
+                "3) 방금 열린 폴더(extension) 를 선택\n\n" +
+                "→ 확장이 설치됩니다. (이후 코드 변경은 자동 업데이트)",
+                "D102 라벨 인쇄", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        };
+        menu.Items.Add(regManual);
 
         menu.Items.Add(new ToolStripSeparator());
         var exit = new ToolStripMenuItem("종료");

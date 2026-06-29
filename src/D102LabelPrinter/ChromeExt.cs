@@ -1,35 +1,87 @@
+using System.Diagnostics;
 using Microsoft.Win32;
 
 namespace D102LabelPrinter;
 
 /// <summary>
-/// 크롬 확장 자동 등록(현재 사용자 정책). 설치/업데이트 시 호출 → 확장이 자동 설치·갱신.
-/// HKCU 정책이라 관리자 권한 불필요. force_installed = 무인 설치 + 크롬 네이티브 자동업데이트.
+/// 크롬 확장 등록. force-install 정책은 Software\Policies(관리자 전용)에 써야 하므로
+/// 관리자 권한이 필요하다. 비관리자에선 실패 → 수동 로드(폴더 동봉)로 폴백.
 /// </summary>
 public static class ChromeExt
 {
-    // 패킹한 .crx 의 확장 ID (공개키에서 파생). ubishop-barcode-ext.pem 로 서명.
     public const string ExtId = "kejfpekfhpjlaifonfdlegmnoglaaphf";
-    // 확장 업데이트 매니페스트(.crx 위치) — 저장소 raw
     public const string UpdateUrl = "https://raw.githubusercontent.com/aredsea/ubishop-barcode-ext/main/update.xml";
 
-    const string PolicyBase = @"Software\Policies\Google\Chrome\ExtensionSettings";
+    const string ForceList = @"SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist";
+    const string Settings = @"SOFTWARE\Policies\Google\Chrome\ExtensionSettings";
 
-    public static void Register()
+    /// <summary>동봉된 확장 폴더 경로(수동 로드용).</summary>
+    public static string BundledExtensionDir => Path.Combine(AppContext.BaseDirectory, "extension");
+
+    /// <summary>force-install 정책 기록(관리자 필요). HKLM 우선, HKCU 보조. true=성공.</summary>
+    public static bool WritePolicy()
     {
-        if (ExtId.StartsWith("__")) return;   // ID 미설정 시 스킵
+        bool any = false;
+        foreach (var root in new[] { Registry.LocalMachine, Registry.CurrentUser })
+        {
+            try
+            {
+                using (var fl = root.CreateSubKey(ForceList))
+                    fl.SetValue("1", $"{ExtId};{UpdateUrl}");
+                using (var es = root.CreateSubKey($@"{Settings}\{ExtId}"))
+                {
+                    es.SetValue("installation_mode", "force_installed");
+                    es.SetValue("update_url", UpdateUrl);
+                }
+                any = true;
+            }
+            catch { /* 권한 없음 — 다음 루트 시도 */ }
+        }
+        return any;
+    }
+
+    /// <summary>이미 정책이 있는지(HKLM 또는 HKCU).</summary>
+    public static bool IsPolicySet()
+    {
+        foreach (var root in new[] { Registry.LocalMachine, Registry.CurrentUser })
+        {
+            try
+            {
+                using var fl = root.OpenSubKey(ForceList);
+                if (fl?.GetValue("1") is string v && v.StartsWith(ExtId)) return true;
+            }
+            catch { }
+        }
+        return false;
+    }
+
+    /// <summary>비관리자에서 호출 → 관리자 권한으로 자기 자신 재실행(--register-ext)해 정책 기록.</summary>
+    public static bool RegisterElevated()
+    {
+        if (IsPolicySet()) return true;
+        if (WritePolicy()) return true;   // 이미 관리자면 바로 성공
         try
         {
-            using var k = Registry.CurrentUser.CreateSubKey($@"{PolicyBase}\{ExtId}");
-            k.SetValue("installation_mode", "force_installed");
-            k.SetValue("update_url", UpdateUrl);
+            var psi = new ProcessStartInfo
+            {
+                FileName = Process.GetCurrentProcess().MainModule.FileName,
+                Arguments = "--register-ext",
+                UseShellExecute = true,
+                Verb = "runas"            // UAC 승격
+            };
+            var p = Process.Start(psi);
+            p.WaitForExit(15000);
+            return IsPolicySet();
         }
-        catch { /* 정책 쓰기 실패 무시(다음 실행에 재시도) */ }
+        catch { return false; }            // 사용자가 UAC 취소 등
     }
 
     public static void Unregister()
     {
-        if (ExtId.StartsWith("__")) return;
-        try { Registry.CurrentUser.DeleteSubKeyTree($@"{PolicyBase}\{ExtId}", false); } catch { }
+        foreach (var root in new[] { Registry.LocalMachine, Registry.CurrentUser })
+        {
+            try { using (var fl = root.OpenSubKey(ForceList, true)) fl?.DeleteValue("1", false); } catch { }
+            try { root.DeleteSubKeyTree($@"{Settings}\{ExtId}", false); } catch { }
+        }
     }
 }
