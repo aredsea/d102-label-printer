@@ -5,7 +5,15 @@ namespace D102LabelPrinter;
 /// <summary>설정·레이아웃 영속화. %AppData%\D102LabelPrinter\</summary>
 public static class AppState
 {
-    public const string Version = "0.1.5";
+    // 실제 어셈블리 버전(csproj <Version>)을 읽는다. 하드코딩 금지(표시 버전 불일치 방지).
+    public static string Version
+    {
+        get
+        {
+            var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            return v != null ? $"{v.Major}.{v.Minor}.{v.Build}" : "0.0.0";
+        }
+    }
 
     static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "D102LabelPrinter");
