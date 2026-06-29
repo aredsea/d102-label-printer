@@ -1,4 +1,5 @@
 using System.Windows.Forms;
+using Velopack;
 
 namespace D102LabelPrinter;
 
@@ -10,6 +11,13 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
+        // Velopack: 설치/업데이트/제거 훅 처리(반드시 최상단). 확장도 함께 등록.
+        VelopackApp.Build()
+            .OnAfterInstallFastCallback(_ => ChromeExt.Register())
+            .OnAfterUpdateFastCallback(_ => ChromeExt.Register())
+            .OnBeforeUninstallFastCallback(_ => ChromeExt.Unregister())
+            .Run();
+
         if (args.Length >= 2 && args[0] == "--selftest") { SelfTest.Run(args[1]); return; }
 
         using var mutex = new Mutex(true, "D102LabelPrinter_singleton", out bool isNew);
@@ -17,6 +25,8 @@ static class Program
 
         ApplicationConfiguration.Initialize();
         AppState.Load();
+
+        _ = Updater.CheckAsync();   // 백그라운드 자동업데이트 확인
 
         _server = new LocalServer { Log = s => System.Diagnostics.Debug.WriteLine(s) };
         try { _server.Start(AppState.Config.Port); }

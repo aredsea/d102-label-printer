@@ -3,5 +3,8 @@ obj/
 *.user
 .vs/
 Releases/
+publish/
+src/D102LabelPrinter/publish/
 *.nupkg
+*.pem
 node_modules/
