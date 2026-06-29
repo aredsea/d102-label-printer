@@ -7,6 +7,20 @@ static class Program
 {
     static LocalServer _server;
     static NotifyIcon _tray;
+    static System.Drawing.Icon _appIcon;
+
+    /// <summary>앱 아이콘(penguin_tray.ico). 없으면 시스템 기본.</summary>
+    public static System.Drawing.Icon AppIcon()
+    {
+        if (_appIcon != null) return _appIcon;
+        try
+        {
+            string p = Path.Combine(AppContext.BaseDirectory, "penguin_tray.ico");
+            if (File.Exists(p)) _appIcon = new System.Drawing.Icon(p);
+        }
+        catch { }
+        return _appIcon ?? System.Drawing.SystemIcons.Application;
+    }
 
     [STAThread]
     static void Main(string[] args)
@@ -97,7 +111,7 @@ static class Program
 
         return new NotifyIcon
         {
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = AppIcon(),
             Text = $"D102 라벨 인쇄 v{AppState.Version}",
             Visible = true,
             ContextMenuStrip = menu
@@ -108,7 +122,7 @@ static class Program
     {
         var printers = RawPrinter.GetPrinters().ToList();
         string cur = string.IsNullOrEmpty(AppState.Config.PrinterName) ? RawPrinter.DefaultPrinter() : AppState.Config.PrinterName;
-        using var dlg = new Form { Text = "프린터 선택", Width = 420, Height = 160, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false };
+        using var dlg = new Form { Text = "프린터 선택", Width = 420, Height = 160, StartPosition = FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false, Icon = AppIcon() };
         var combo = new ComboBox { Left = 16, Top = 20, Width = 380, DropDownStyle = ComboBoxStyle.DropDownList };
         combo.Items.AddRange(printers.ToArray());
         if (printers.Contains(cur)) combo.SelectedItem = cur; else if (combo.Items.Count > 0) combo.SelectedIndex = 0;

@@ -5,7 +5,7 @@ namespace D102LabelPrinter;
 /// <summary>설정·레이아웃 영속화. %AppData%\D102LabelPrinter\</summary>
 public static class AppState
 {
-    public const string Version = "0.1.3";
+    public const string Version = "0.1.4";
 
     static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "D102LabelPrinter");

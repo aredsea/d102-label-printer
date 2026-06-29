@@ -21,7 +21,7 @@ public class SettingsForm : Form
         Height = 460;
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new System.Drawing.Size(820, 360);
-        try { Icon = System.Drawing.SystemIcons.Application; } catch { }
+        try { Icon = Program.AppIcon(); } catch { }
 
         _web = new WebView2 { Dock = DockStyle.Fill };
         Controls.Add(_web);
