@@ -112,8 +112,9 @@ public static class LabelModel
             case "weight":       return d.Weight;
             // 다이아: "(주)D102 매장명"(고객 문구 없음). 일반: 기존(회사+구분=매장명).
             case "compCat":      return IsDiamond(d) ? Join("  ", cfg.Company, d.Store) : Join("  ", cfg.Company, d.Category);
-            // 상품명/고객명 사이 "/" 구분.
-            case "namePartner":  return Join("/", EffName(d), Join("", d.Partner, d.SetNo));
+            // 다이아: 추가설명만(작업자가 추가설명에 고객명 기입 → 중복방지로 고객명 미부착).
+            //  일반: 상품명/고객명 "/" 구분.
+            case "namePartner":  return IsDiamond(d) ? EffName(d) : Join("/", EffName(d), Join("", d.Partner, d.SetNo));
             case "brandTop":     return cfg.BrandTop;
             case "brandUrl":     return cfg.BrandUrl;
             default:             return "";
