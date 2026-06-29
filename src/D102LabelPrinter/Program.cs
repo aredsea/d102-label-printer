@@ -25,7 +25,8 @@ static class Program
 
         ApplicationConfiguration.Initialize();
         AppState.Load();
-        try { ChromeExt.WritePolicy(); } catch { }   // 권한 있으면 정책 기록(없으면 무시)
+        try { ChromeExt.SyncStableExtension(); } catch { }   // 확장을 안정 경로로 복사(reload 만으로 최신)
+        try { ChromeExt.WritePolicy(); } catch { }           // 권한 있으면 정책 기록(없으면 무시)
 
         _ = Updater.CheckAsync();   // 백그라운드 자동업데이트 확인
 
@@ -72,17 +73,19 @@ static class Program
         };
         menu.Items.Add(regAuto);
 
-        var regManual = new ToolStripMenuItem("확장 수동 설치 (폴더 열기)");
+        var regManual = new ToolStripMenuItem("확장 수동 설치/새로고침 (폴더 열기)");
         regManual.Click += (_, _) =>
         {
-            try { System.Diagnostics.Process.Start("explorer.exe", $"\"{ChromeExt.BundledExtensionDir}\""); } catch { }
+            ChromeExt.SyncStableExtension();   // 최신본을 안정 경로로
+            try { System.Diagnostics.Process.Start("explorer.exe", $"\"{ChromeExt.StableExtensionDir}\""); } catch { }
             try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("chrome.exe", "chrome://extensions") { UseShellExecute = true }); } catch { }
             MessageBox.Show(
-                "크롬 확장 수동 설치:\n\n" +
-                "1) 열린 chrome://extensions 에서 우측 상단 \"개발자 모드\" 켜기\n" +
-                "2) \"압축해제된 확장 프로그램을 로드\" 클릭\n" +
-                "3) 방금 열린 폴더(extension) 를 선택\n\n" +
-                "→ 확장이 설치됩니다. (이후 코드 변경은 자동 업데이트)",
+                "크롬 확장 설치/새로고침:\n\n" +
+                "[처음 설치] chrome://extensions → \"개발자 모드\" ON → \"압축해제된 확장 로드\"\n" +
+                "  → 방금 열린 폴더 선택\n\n" +
+                "[이미 설치됨 / 업데이트] 확장 카드의 새로고침(↻) 클릭\n" +
+                "  (안되면 기존 확장 \"삭제\" 후 위 폴더로 다시 로드)\n\n" +
+                "설치 후 유비샵 페이지를 새로고침하세요.",
                 "D102 라벨 인쇄", MessageBoxButtons.OK, MessageBoxIcon.Information);
         };
         menu.Items.Add(regManual);

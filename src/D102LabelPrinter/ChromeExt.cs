@@ -15,8 +15,31 @@ public static class ChromeExt
     const string ForceList = @"SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist";
     const string Settings = @"SOFTWARE\Policies\Google\Chrome\ExtensionSettings";
 
-    /// <summary>동봉된 확장 폴더 경로(수동 로드용).</summary>
+    /// <summary>동봉된 확장 폴더(설치본 내부, 업데이트마다 경로 바뀔 수 있음).</summary>
     public static string BundledExtensionDir => Path.Combine(AppContext.BaseDirectory, "extension");
+
+    /// <summary>크롬이 unpacked 로 가리킬 "안정 경로"(프로그램 업데이트와 무관).
+    /// 매 실행마다 동봉본을 여기로 복사 → 크롬에서 reload 만 하면 최신 반영.</summary>
+    public static string StableExtensionDir =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "D102LabelExtension");
+
+    /// <summary>동봉 확장 → 안정 경로 복사(덮어쓰기).</summary>
+    public static void SyncStableExtension()
+    {
+        try
+        {
+            string src = BundledExtensionDir, dst = StableExtensionDir;
+            if (!Directory.Exists(src)) return;
+            foreach (var f in Directory.GetFiles(src, "*", SearchOption.AllDirectories))
+            {
+                string rel = Path.GetRelativePath(src, f);
+                string target = Path.Combine(dst, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(target));
+                File.Copy(f, target, true);
+            }
+        }
+        catch { }
+    }
 
     /// <summary>force-install 정책 기록(관리자 필요). HKLM 우선, HKCU 보조. true=성공.</summary>
     public static bool WritePolicy()
