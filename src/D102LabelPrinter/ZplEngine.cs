@@ -14,6 +14,43 @@ public static class ZplEngine
 {
     public const double DotsPerMm = 300.0 / 25.4;   // ≈ 11.811
 
+    /// <summary>내장 Pretendard(어셈블리 리소스). 설치 여부와 무관하게 동일 렌더.</summary>
+    private static PrivateFontCollection _pfc;
+    private static FontFamily _embeddedFamily;
+    private static bool _fontInit;
+
+    private static void EnsureEmbeddedFont()
+    {
+        if (_fontInit) return;
+        _fontInit = true;
+        try
+        {
+            var asm = typeof(ZplEngine).Assembly;
+            var pfc = new PrivateFontCollection();
+            foreach (var res in asm.GetManifestResourceNames())
+            {
+                if (!(res.EndsWith(".otf", StringComparison.OrdinalIgnoreCase)
+                   || res.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase))) continue;
+                using var st = asm.GetManifestResourceStream(res);
+                if (st == null) continue;
+                using var ms = new MemoryStream();
+                st.CopyTo(ms);
+                byte[] bytes = ms.ToArray();
+                // AddMemoryFont 가 참조하는 메모리는 앱 수명 동안 유지(해제하지 않음).
+                IntPtr p = Marshal.AllocCoTaskMem(bytes.Length);
+                Marshal.Copy(bytes, 0, p, bytes.Length);
+                pfc.AddMemoryFont(p, bytes.Length);
+            }
+            _pfc = pfc;
+            foreach (var fam in pfc.Families)
+                if (fam.Name.IndexOf("Pretendard", StringComparison.OrdinalIgnoreCase) >= 0)
+                { _embeddedFamily = fam; break; }
+            if (_embeddedFamily == null && pfc.Families.Length > 0) _embeddedFamily = pfc.Families[0];
+        }
+        catch { _embeddedFamily = null; }   // 실패 시 설치 폰트로 폴백
+    }
+
+    /// <summary>폴백 폰트명(내장 로드 실패 시): 설치된 Pretendard → 맑은고딕.</summary>
     private static string _koreanFont;
     public static string KoreanFont
     {
@@ -28,6 +65,19 @@ public static class ZplEngine
                         : "Malgun Gothic";
             return _koreanFont;
         }
+    }
+
+    /// <summary>렌더에 쓸 Font 생성 — 내장 Pretendard 우선, 실패 시 설치 폰트명.</summary>
+    private static Font MakeFont(int px, FontStyle style)
+    {
+        EnsureEmbeddedFont();
+        if (_embeddedFamily != null)
+        {
+            var st = _embeddedFamily.IsStyleAvailable(style) ? style
+                   : _embeddedFamily.IsStyleAvailable(FontStyle.Regular) ? FontStyle.Regular : style;
+            return new Font(_embeddedFamily, px, st, GraphicsUnit.Pixel);
+        }
+        return new Font(KoreanFont, px, style, GraphicsUnit.Pixel);
     }
 
     private static int Dots(double mm) => (int)Math.Round(mm * DotsPerMm);
@@ -57,7 +107,7 @@ public static class ZplEngine
             {
                 string text = LabelModel.FieldValue(f, item, cfg);
                 if (string.IsNullOrEmpty(text)) continue;
-                var (w, _, gf) = RenderTextToZpl(text, KoreanFont, f.Fs, f.Bold);
+                var (w, _, gf) = RenderTextToZpl(text, f.Fs, f.Bold);
                 int fx = x;
                 int boxw = Dots(f.W);
                 if (f.Align == "center") fx = x + (boxw - w) / 2;
@@ -78,12 +128,12 @@ public static class ZplEngine
         return sb.ToString();
     }
 
-    /// <summary>텍스트 → 1-bit 비트맵 → ^GFA. (한글 포함, Pretendard)</summary>
-    public static (int w, int h, string zpl) RenderTextToZpl(string text, string fontName, double fsMm, bool bold)
+    /// <summary>텍스트 → 1-bit 비트맵 → ^GFA. (한글 포함, 내장 Pretendard)</summary>
+    public static (int w, int h, string zpl) RenderTextToZpl(string text, double fsMm, bool bold)
     {
         int px = Math.Max(6, (int)Math.Round(fsMm * DotsPerMm));
         var style = bold ? FontStyle.Bold : FontStyle.Regular;
-        using var font = new Font(fontName, px, style, GraphicsUnit.Pixel);
+        using var font = MakeFont(px, style);
 
         SizeF sz;
         using (var tmp = new Bitmap(2, 2))

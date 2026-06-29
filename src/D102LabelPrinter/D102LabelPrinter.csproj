@@ -7,7 +7,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>D102LabelPrinter</AssemblyName>
-    <Version>0.1.5</Version>
+    <Version>0.1.6</Version>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
@@ -18,6 +18,12 @@
     <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
     <PackageReference Include="Velopack" Version="1.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Pretendard 폰트 내장(SIL OFL). 미설치 PC에서도 동일 렌더 → PrivateFontCollection 로드. -->
+    <EmbeddedResource Include="fonts\Pretendard-Regular.otf" />
+    <EmbeddedResource Include="fonts\Pretendard-Bold.otf" />
   </ItemGroup>
 
   <ItemGroup>
