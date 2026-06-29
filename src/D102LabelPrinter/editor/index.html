@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>D102 라벨 설정</title>
+  <script src="JsBarcode.all.min.js"></script>
+  <script src="config.js"></script>
+  <script src="barcode.js"></script>
+  <script src="label.js"></script>
+  <script src="editor.js"></script>
+  <style>
+    /* ── 오늘의집(DESIGN.md) 스킨: 시안 #35C5F0 · Pretendard · 8/12px · 미니멀 ── */
+    :root{ --pri:#35C5F0; --pri-press:#1FB1DB; --ink:#222; --canvas:#fff;
+           --g50:#fafafa; --g100:#f5f5f5; --g300:#ddd; --g600:#888; }
+    html,body{ margin:0; height:100%; background:var(--g50);
+      font-family:'Pretendard','Pretendard Variable',-apple-system,'Malgun Gothic',sans-serif; color:var(--ink); }
+
+    /* 편집기 모달을 창 전체로(설정창=편집기) */
+    #ub-ed-root{ position:fixed; inset:0; background:var(--g50) !important; }
+    #ub-ed-root .ub-ed-modal{ width:100% !important; height:100% !important; max-height:100% !important;
+      border-radius:0 !important; box-shadow:none !important; background:var(--g50) !important; }
+
+    /* 헤더: 흰 배경 + 하단 보더(오늘의집 top nav) */
+    #ub-ed-root .ub-ed-head{ background:var(--canvas) !important; color:var(--ink) !important;
+      border-bottom:1px solid #eee; padding:12px 16px !important; }
+    #ub-ed-root .ub-ed-head h2{ font-size:16px !important; font-weight:700; color:var(--ink) !important; }
+
+    /* 버튼 */
+    #ub-ed-root .ub-ed-btn{ border-radius:8px !important; font-size:13px !important; font-weight:600; }
+    #ub-ed-root .ub-ed-btn.primary{ background:var(--pri) !important; color:#fff !important; }
+    #ub-ed-root .ub-ed-btn.ghost{ background:var(--g100) !important; color:var(--ink) !important; }
+    #ub-ed-root .ub-ed-btn.warn{ background:#fff !important; color:#e53935 !important; border:1px solid #e53935 !important; }
+    #ub-ed-root .ub-ed-btn.on{ background:var(--pri) !important; color:#fff !important; }
+
+    /* 본문 */
+    #ub-ed-root .ub-ed-canvaswrap{ background:var(--g100) !important; }
+    #ub-ed-root .ub-ed-props{ background:var(--canvas) !important; border-left:1px solid #eee !important; }
+    #ub-ed-root .ub-ed-chip.sel{ background:var(--pri) !important; border-color:var(--pri) !important; }
+    #ub-ed-root .ub-ed-canvas.edit .ub-f:hover{ outline:1px solid var(--pri) !important; }
+    #ub-ed-root .ub-ed-canvas .ub-f.sel{ outline:2px solid var(--pri) !important; box-shadow:0 0 0 2px rgba(53,197,240,.25) !important; }
+    #ub-ed-root .ub-ed-canvas .ub-rz{ background:var(--pri) !important; }
+    #ub-ed-root .ub-ed-row input:focus, #ub-ed-root .ub-ed-row select:focus{ outline:none; border-color:var(--pri) !important; box-shadow:0 0 0 2px rgba(53,197,240,.2); }
+    #ub-ed-root .ub-ed-banner{ background:#E8F7FD !important; color:#0E8FB8 !important; border-bottom-color:#7FD9F5 !important; }
+  </style>
+</head>
+<body>
+  <script>
+  (function () {
+    // ── 저장소 브리지: 편집기 ↔ .NET(layout.json). localStorage 안 씀(완벽 저장) ──
+    window.__UB_LAYOUT = null;     // .NET 이 주입
+    window.__UB_STORAGE = {
+      read:  function () { return window.__UB_LAYOUT; },
+      write: function (slim) {
+        window.__UB_LAYOUT = slim;
+        post({ type: 'save', layout: slim });
+      },
+      reset: function () {
+        window.__UB_LAYOUT = null;
+        post({ type: 'reset' });
+      }
+    };
+    function post(obj) {
+      try { window.chrome.webview.postMessage(JSON.stringify(obj)); } catch (e) { console.warn(e); }
+    }
+
+    function sample() {
+      var F = window.UBCFG.fixed, P = window.UBCFG.barcodePrefix;
+      return [{
+        company: F.company, itemName: 'F-볼륨하트언발체인', itemNo: 'F-BF-Q-YG-ZZ-0096',
+        price: 1830000, barcode: '2606RL', barcodePrefix: P,
+        metal: '18K', diameter: '17', weight: '4.36g',
+        category: 'FASHION', partner: '백*심9932/G', setNo: '',
+        brandTop: F.brandTop, brandUrl: F.brandUrl
+      }];
+    }
+
+    // .NET 이 layout/config 주입 후 호출
+    window.__ubBoot = function (layout, config) {
+      try {
+        if (config) {
+          if (config.company)  window.UBCFG.fixed.company  = config.company;
+          if (config.brandTop) window.UBCFG.fixed.brandTop = config.brandTop;
+          if (config.brandUrl) window.UBCFG.fixed.brandUrl = config.brandUrl;
+          if (config.barcodePrefix != null) window.UBCFG.barcodePrefix = config.barcodePrefix;
+        }
+        window.__UB_LAYOUT = (layout && layout.length) ? layout : null;
+        window.UBEditor.open(sample(), {
+          editMode: true,           // 설정창은 항상 편집 모드
+          hideClose: true,          // 닫기는 창 타이틀바로
+          hidePrint: true,          // window.print 미사용(프로그램이 ZPL 인쇄)
+          title: 'D102 라벨 위치·문구 설정',
+          banner: '드래그/수치로 위치, 우하단 핸들로 크기, 휠로 확대·축소. 브랜딩/회사명은 "텍스트"에서 직접 수정. 바꾸면 자동 저장됩니다.',
+          testPrint: function () { post({ type: 'testprint' }); }
+        });
+        // 설정창은 "저장" 즉시 .NET 파일기록이라, editMode 강제 ON 유지
+      } catch (e) { document.body.insertAdjacentHTML('beforeend', '<pre style="color:red">'+e+'</pre>'); }
+    };
+
+    // .NET 주입이 늦을 때 대비: 1.5초 후에도 안 오면 기본값으로 오픈
+    setTimeout(function () { if (!document.getElementById('ub-ed-root')) window.__ubBoot(null, null); }, 1500);
+  })();
+  </script>
+</body>
+</html>

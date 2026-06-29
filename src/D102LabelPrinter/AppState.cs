@@ -11,7 +11,14 @@ public static class AppState
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "D102LabelPrinter");
     static string CfgPath => Path.Combine(Dir, "config.json");
     static string LayoutPath => Path.Combine(Dir, "layout.json");
-    static readonly JsonSerializerOptions J = new() { WriteIndented = true };
+    // camelCase: 편집기(JS)의 키(x,y,fs,visible,text…)와 layout.json 을 일치시킨다.
+    public static readonly JsonSerializerOptions Camel = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
 
     public static FixedConfig Config = new();
     public static List<Field> Layout = LabelModel.DefaultLayout();
@@ -20,20 +27,20 @@ public static class AppState
     {
         Directory.CreateDirectory(Dir);
         if (File.Exists(CfgPath))
-            try { Config = JsonSerializer.Deserialize<FixedConfig>(File.ReadAllText(CfgPath)) ?? new(); } catch { }
+            try { Config = JsonSerializer.Deserialize<FixedConfig>(File.ReadAllText(CfgPath), Camel) ?? new(); } catch { }
         if (File.Exists(LayoutPath))
-            try { var l = JsonSerializer.Deserialize<List<Field>>(File.ReadAllText(LayoutPath)); if (l is { Count: > 0 }) Layout = l; } catch { }
+            try { var l = JsonSerializer.Deserialize<List<Field>>(File.ReadAllText(LayoutPath), Camel); if (l is { Count: > 0 }) Layout = l; } catch { }
     }
 
     public static void SaveConfig()
     {
         Directory.CreateDirectory(Dir);
-        File.WriteAllText(CfgPath, JsonSerializer.Serialize(Config, J));
+        File.WriteAllText(CfgPath, JsonSerializer.Serialize(Config, Camel));
     }
 
     public static void SaveLayout()
     {
         Directory.CreateDirectory(Dir);
-        File.WriteAllText(LayoutPath, JsonSerializer.Serialize(Layout, J));
+        File.WriteAllText(LayoutPath, JsonSerializer.Serialize(Layout, Camel));
     }
 }

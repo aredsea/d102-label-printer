@@ -8,8 +8,10 @@ static class Program
     static NotifyIcon _tray;
 
     [STAThread]
-    static void Main()
+    static void Main(string[] args)
     {
+        if (args.Length >= 2 && args[0] == "--selftest") { SelfTest.Run(args[1]); return; }
+
         using var mutex = new Mutex(true, "D102LabelPrinter_singleton", out bool isNew);
         if (!isNew) return;   // 중복 실행 방지
 
@@ -35,12 +37,16 @@ static class Program
         menu.Items.Add(new ToolStripMenuItem("D102 라벨 인쇄 — 실행 중") { Enabled = false });
         menu.Items.Add(new ToolStripSeparator());
 
+        var settings = new ToolStripMenuItem("라벨 위치·문구 설정…");
+        settings.Click += (_, _) => OpenSettings();
+        menu.Items.Add(settings);
+
         var printerItem = new ToolStripMenuItem("프린터 선택…");
         printerItem.Click += (_, _) => PickPrinter();
         menu.Items.Add(printerItem);
 
         var test = new ToolStripMenuItem("테스트 인쇄");
-        test.Click += (_, _) => TestPrint();
+        test.Click += (_, _) => Printing.TestPrint();
         menu.Items.Add(test);
 
         menu.Items.Add(new ToolStripSeparator());
@@ -76,23 +82,18 @@ static class Program
         }
     }
 
-    static void TestPrint()
+    static SettingsForm _settings;
+    static void OpenSettings()
     {
-        try
+        if (_settings != null && !_settings.IsDisposed)
         {
-            var item = new LabelItem
-            {
-                Barcode = "2606RL", ItemName = "F-볼륨하트언발체인", ItemNo = "F-BF-Q-YG-ZZ-0096",
-                Price = 1830000, Metal = "18K", Diameter = "17", Weight = "4.36g",
-                Category = "FASHION", Partner = "백*심9932/G"
-            };
-            string zpl = ZplEngine.BuildLabel(item, AppState.Layout, AppState.Config);
-            RawPrinter.SendZpl(AppState.Config.PrinterName, zpl);
-            MessageBox.Show("테스트 라벨을 인쇄했습니다.", "D102 라벨 인쇄", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            _settings.WindowState = FormWindowState.Normal;
+            _settings.Activate();
+            return;
         }
-        catch (Exception e)
-        {
-            MessageBox.Show("테스트 인쇄 실패:\n" + e.Message, "D102 라벨 인쇄", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
+        _settings = new SettingsForm();
+        _settings.FormClosed += (_, _) => _settings = null;
+        _settings.Show();
+        _settings.Activate();
     }
 }
