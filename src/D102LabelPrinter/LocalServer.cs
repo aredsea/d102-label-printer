@@ -51,6 +51,8 @@ public class LocalServer
         res.Headers["Access-Control-Allow-Origin"] = "*";
         res.Headers["Access-Control-Allow-Headers"] = "Content-Type";
         res.Headers["Access-Control-Allow-Methods"] = "POST,GET,OPTIONS";
+        // ★ Private Network Access: http 공개페이지(유비샵)→127.0.0.1 fetch 허용(없으면 크롬이 차단)
+        res.Headers["Access-Control-Allow-Private-Network"] = "true";
         try
         {
             if (req.HttpMethod == "OPTIONS") { res.StatusCode = 204; res.Close(); return; }
