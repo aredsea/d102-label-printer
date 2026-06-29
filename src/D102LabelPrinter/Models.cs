@@ -91,6 +91,25 @@ public static class LabelModel
 
     private static string Join(string sep, params string[] parts)
         => string.Join(sep, parts.Where(p => !string.IsNullOrEmpty(p)));
+
+    /// <summary>저장된 레이아웃(편집기에서 온, type/name 누락 가능) → 기본 레이아웃에
+    /// 위치/크기/표시/문구만 덮어쓴다. type·name·key 는 항상 기본값 유지(바코드/박스 보존).</summary>
+    public static List<Field> Merge(List<Field> saved)
+    {
+        var baseLayout = DefaultLayout();
+        if (saved == null || saved.Count == 0) return baseLayout;
+        var byKey = new Dictionary<string, Field>();
+        foreach (var s in saved) if (!string.IsNullOrEmpty(s?.Key)) byKey[s.Key] = s;
+        foreach (var f in baseLayout)
+        {
+            if (!byKey.TryGetValue(f.Key, out var s)) continue;
+            f.X = s.X; f.Y = s.Y; f.W = s.W; f.H = s.H; f.Fs = s.Fs;
+            f.Bold = s.Bold; f.Visible = s.Visible; f.Text = s.Text;
+            if (!string.IsNullOrEmpty(s.Align)) f.Align = s.Align;
+            // ※ Type/Name/Key/Editable 은 기본값 유지(저장값에 없거나 틀려도 보존)
+        }
+        return baseLayout;
+    }
 }
 
 /// <summary>POST /print 요청 본문.</summary>

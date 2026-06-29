@@ -39,7 +39,7 @@
   }
   function slimLayout(layout) {
     return layout.map(f => ({
-      key: f.key, x: f.x, y: f.y, w: f.w, h: f.h,
+      key: f.key, type: f.type, x: f.x, y: f.y, w: f.w, h: f.h,
       fs: f.fs, bold: f.bold, align: f.align, visible: f.visible, text: f.text
     }));
   }

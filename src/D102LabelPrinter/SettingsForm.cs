@@ -78,8 +78,9 @@ public class SettingsForm : Form
                 case "save":
                     if (msg.Layout is { Count: > 0 })
                     {
-                        AppState.Layout = msg.Layout;
-                        AppState.SaveLayout();   // ← layout.json 즉시 기록(완벽 저장)
+                        // 편집기 저장값엔 type 이 없을 수 있음 → 기본 레이아웃에 병합(바코드/박스 type 보존)
+                        AppState.Layout = LabelModel.Merge(msg.Layout);
+                        AppState.SaveLayout();   // ← layout.json 즉시 기록
                     }
                     break;
                 case "reset":

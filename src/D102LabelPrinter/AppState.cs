@@ -5,7 +5,7 @@ namespace D102LabelPrinter;
 /// <summary>설정·레이아웃 영속화. %AppData%\D102LabelPrinter\</summary>
 public static class AppState
 {
-    public const string Version = "0.1.4";
+    public const string Version = "0.1.5";
 
     static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "D102LabelPrinter");
@@ -29,7 +29,7 @@ public static class AppState
         if (File.Exists(CfgPath))
             try { Config = JsonSerializer.Deserialize<FixedConfig>(File.ReadAllText(CfgPath), Camel) ?? new(); } catch { }
         if (File.Exists(LayoutPath))
-            try { var l = JsonSerializer.Deserialize<List<Field>>(File.ReadAllText(LayoutPath), Camel); if (l is { Count: > 0 }) Layout = l; } catch { }
+            try { var l = JsonSerializer.Deserialize<List<Field>>(File.ReadAllText(LayoutPath), Camel); if (l is { Count: > 0 }) Layout = LabelModel.Merge(l); } catch { }
     }
 
     public static void SaveConfig()
