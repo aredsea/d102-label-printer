@@ -30,6 +30,9 @@
       category: '',
       partner: '',
       setNo: '',
+      store: '',        // 매장명(라벨 접두코드·다이아 매장표기용)
+      vendor: '',       // 매입처명(다이아 지표: 본디/캐럿)
+      extraDesc: '',    // 추가설명(다이아 상품명으로 사용)
       brandTop: F.brandTop,
       brandUrl: F.brandUrl,
       _source: ''
@@ -59,12 +62,16 @@
   /* ---- note 툴팁에서 상품명(한글) 추출 ---------------------------------- *
    *  구조: <span ...>상품명 : </span>링오너먼트(랜덤)<br>
    *  → "상품명" span 바로 다음 텍스트노드(br 전까지)를 정확히 가져온다.        */
-  function nameFromNote(note) {
+  // note 툴팁의 "<label> : 값<br>" 에서 값 추출(span 다음 텍스트노드~br).
+  // ⚠ '상품명' 은 '매입처상품코드' 끝에도 들어가므로 ":" 직전 글자로 정확 매칭.
+  function noteField(note, label) {
     if (!note) return '';
     const spans = note.querySelectorAll('span');
     for (const sp of spans) {
       const t = (sp.textContent || '').replace(/\s+/g, '');
-      if (t.indexOf('상품명:') >= 0) {            // "매입처상품코드:" 등은 매칭 안 됨
+      // "상품명:" 매칭이 "매입처상품코드:" 에 걸리지 않도록, 라벨이 정확히 그 토큰으로 시작/끝나게.
+      const idx = t.indexOf(label + ':');
+      if (idx >= 0 && (idx === 0 || !/[가-힣A-Za-z]/.test(t[idx - 1]))) {
         let n = sp.nextSibling, out = '';
         while (n && n.nodeName !== 'BR') {
           out += (n.nodeType === 3 ? n.nodeValue : (n.textContent || ''));
@@ -74,9 +81,34 @@
         if (out) return out;
       }
     }
+    return '';
+  }
+
+  function nameFromNote(note) {
+    const v = noteField(note, '상품명');
+    if (v) return v;
     // 폴백: innerText 정규식
-    const ntx = (note.innerText || note.textContent || '');
+    const ntx = (note && (note.innerText || note.textContent)) || '';
     return (ntx.match(/상품명\s*:\s*([^\n]+?)\s*(?:해리|배수|매입처|추가설명|각인|원산지|상세스톤|$)/) || [])[1] || '';
+  }
+
+  /* 검색 정보셀 파서 — "매장명 (고객명)금속 중량g (사이즈)" 한 칸에서 분리.
+   *  ⚠ 고객 괄호가 없는 품목(은925/다이아)에선 끝의 (사이즈) 괄호를 고객명으로
+   *    오인하면 안 되고, 매장명도 금속 앞까지만 잘라야 한다.                       */
+  function parseInfoCell(s) {
+    s = s || '';
+    const sm = s.match(/\d+\s*K|925|[\d.]+\s*ct/i);        // 금속/ct 스펙 시작 위치
+    const specIdx = sm ? sm.index : s.length;
+    const firstParen = s.indexOf('(');
+    const custBefore = firstParen >= 0 && firstParen < specIdx;  // 스펙 앞 괄호 = 고객명
+    const store = s.slice(0, custBefore ? firstParen : specIdx).trim();
+    let partner = '';
+    if (custBefore) { const pm = s.slice(firstParen).match(/\(([^)]*)\)/); partner = pm ? pm[1] : ''; }
+    const metal = (s.match(/(\d+\s*K|925)/) || [])[1] || '';
+    const wt = (s.match(/([\d.]+)\s*g/i) || [])[1] || '';
+    let diameter = ((s.match(/\(([^)]*)\)\s*$/) || [])[1] || '').trim();   // 끝의 (사이즈)
+    if (diameter && diameter === partner) diameter = '';                   // 고객괄호 오인 방지
+    return { store, partner, metal, weight: wt ? wt + 'g' : '', diameter };
   }
 
   // 목록 행 → 연결된 note_N 툴팁 요소
@@ -112,16 +144,14 @@
     const price = txt(CFG.cell.price).replace(/[^\d]/g, '');
     if (price) d.price = Number(price);
 
-    // 금속/중량 (예: "14K 0.59 g")
-    const mw = txt(CFG.cell.storeInfo).match(/(\d+\s*K)\s*([\d.]+)\s*g/i);
-    if (mw) {
-      d.metal = (mw[1] || '').replace(/\s+/g, '');
-      d.weight = mw[2] ? mw[2] + 'g' : '';
-    }
+    // 매장명/고객명/금속/중량/사이즈 (storeInfo 셀) — 통합 파서
+    const si = parseInfoCell(txt(CFG.cell.storeInfo));
+    d.store = si.store; d.category = si.store;
+    d.partner = si.partner; d.metal = si.metal; d.weight = si.weight; d.diameter = si.diameter;
 
-    // 구분
-    const g = txt(CFG.cell.gubun);
-    if (g) d.category = g;
+    // 매입처(다이아 지표) + 추가설명(다이아 상품명)
+    d.vendor    = (txt(CFG.cell.vendor).match(/^[^\d]+/) || [])[0] ? txt(CFG.cell.vendor).match(/^[^\d]+/)[0].trim() : '';
+    d.extraDesc = noteField(findRowNote(tr), '추가설명');
 
     return d;
   }
@@ -214,14 +244,16 @@
     const cell4 = txt(C.itemNo);
     d.itemNo = (cell4.replace(barcode, '').match(/([A-Z][\w-]{3,})/) || [])[1] || '';
 
-    // 셀6: "FASHION (백*심9932/G)18K 4.36 g (17)"
-    const c6 = txt(C.info);
-    d.category = (c6.match(/^([A-Za-z가-힣]+)/) || [])[1] || '';
-    d.partner  = (c6.match(/\(([^)]*)\)/) || [])[1] || '';
-    d.metal    = (c6.match(/(\d+\s*K)/) || [])[1] || '';
-    const wt   = (c6.match(/([\d.]+)\s*g/i) || [])[1] || '';
-    d.weight   = wt ? wt + 'g' : '';
-    d.diameter = (c6.match(/\((\d+)\)\s*$/) || [])[1] || '';   // 호수/외경
+    // 셀6: "광주점 (김재완/김민정)0.32 ct ()" / "D102본사925 0 g (39.5+5.5)"
+    //  → 통합 파서로 매장명/고객명/금속/중량/사이즈 분리(고객괄호 없는 은925·다이아 대응)
+    const info = parseInfoCell(txt(C.info));
+    d.store = info.store; d.category = info.store;
+    d.partner = info.partner; d.metal = info.metal; d.weight = info.weight; d.diameter = info.diameter;
+
+    // 매입처(다이아 지표): 셀2 "본디26-06-05" → 날짜 앞 글자만
+    d.vendor    = (txt(C.vendor).match(/^[^\d]+/) || [])[0] ? txt(C.vendor).match(/^[^\d]+/)[0].trim() : '';
+    // 추가설명(다이아 상품명으로 사용)
+    d.extraDesc = noteField(note, '추가설명');
 
     // 상품명(한글): note 툴팁 "상품명 :" span 다음 텍스트
     d.itemName = nameFromNote(note) || d.itemNo;   // 없으면 상품번호 폴백
@@ -279,15 +311,103 @@
   }
 
   /* ====================================================================== *
+   *  고객명(거래처) 표시 규칙 — 인쇄 시 partner 에 적용 (공통)
+   *   1) 예물:  "이름/이름" (양쪽 2~4 한글, 숫자 없음) → 뒤쪽 이름만
+   *             예) 최원형/이보람 → 이보람
+   *   2) 일반:  "이름+숫자4개/문자1개" (한글|영문 1글자) → 이름+숫자까지
+   *             예) 이*영6877/G → 이*영6877,  구수진1266/S → 구수진1266
+   *   3) 그 외: 원문 전체 그대로
+   * ====================================================================== */
+  function customerName(raw) {
+    const s = (raw || '').trim();
+    if (!s) return s;
+    // 규칙 2 먼저(숫자 보유) → 규칙 1
+    let m = s.match(/^(.+\d{4})\/[A-Za-z가-힣]$/);
+    if (m) return m[1];
+    m = s.match(/^([가-힣*]{2,4})\/([가-힣*]{2,4})$/);
+    if (m) return m[2];
+    return s;
+  }
+
+  /* ====================================================================== *
+   *  출처 C — 상품입고 페이지(inputItemWriteForm.do) 목록 스크래핑
+   * ====================================================================== */
+  function isInboundPage() {
+    const cfg = window.UBCFG.inbound;
+    return !!(cfg && cfg.match && cfg.match.test(location.pathname));
+  }
+
+  // 입고장 헤더의 매입처명(행별 열이 없어 시트 단위). 다이아 지표(본디/캐럿)용 — best-effort.
+  let _inboundVendor;
+  function inboundVendor() {
+    if (_inboundVendor !== undefined) return _inboundVendor;
+    _inboundVendor = '';
+    const els = document.querySelectorAll('td,th,span,label,div');
+    for (const el of els) {
+      const own = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.nodeValue).join('').replace(/\s+/g, '');
+      if (own === '매입처' || own === '매입처:') {       // "매입처상품코드" 제외(정확매칭)
+        // 같은 행의 다음 셀 또는 형제에서 값
+        const tr = el.closest('tr');
+        let val = '';
+        if (tr) {
+          const tds = [...tr.children];
+          const i = tds.findIndex(td => td.contains(el));
+          for (let k = i + 1; k < tds.length && !val; k++) val = (tds[k].innerText || '').trim();
+        }
+        if (!val && el.nextElementSibling) val = (el.nextElementSibling.innerText || '').trim();
+        _inboundVendor = (val.match(/^[^\d(]+/) || [])[0] ? val.match(/^[^\d(]+/)[0].trim() : val.trim();
+        if (_inboundVendor) break;
+      }
+    }
+    return _inboundVendor;
+  }
+
+  function scrapeInboundRow(cb) {
+    const C = window.UBCFG.inbound.cell;
+    const tr = cb.closest('tr');
+    const cells = [...tr.children];
+    const lines = i => ((cells[i] && cells[i].innerText) || '')
+      .split('\n').map(s => s.trim()).filter(Boolean);
+
+    // 셀2: [바코드, 매입처코드, 상품번호+상품명]  (idx value 는 복합이라 셀2 첫 줄을 바코드로)
+    const c2 = lines(C.info2);
+    const d = emptyLabel(c2[0] || '');
+    d._source = 'inbound';
+
+    const codeName = c2[c2.length - 1] || '';        // 예) "B0492피어싱" / "B2359R"
+    const mm = codeName.match(/^([A-Za-z0-9-]+)([가-힣].*)?$/);
+    d.itemNo   = (mm && mm[1]) || codeName;
+    d.itemName = (mm && mm[2] ? mm[2].trim() : '') || d.itemNo;
+
+    // 셀4: line0="FASHION (이*영6877/G)", line1="18K 0.46 g ()"
+    const c4 = lines(C.store);
+    const head = c4[0] || '';
+    d.store    = (head.match(/^([^(]+)/) || [])[1] ? head.match(/^([^(]+)/)[1].trim() : '';
+    d.category = d.store;
+    d.partner  = (head.match(/\(([^)]*)\)/) || [])[1] || '';
+    const info = c4[1] || head;
+    const mk = info.match(/(\d+\s*K|925)/);
+    d.metal    = mk ? mk[1].replace(/\s+/g, '') : '';
+    const wt   = (info.match(/([\d.]+)\s*g/i) || [])[1] || '';
+    d.weight   = wt ? wt + 'g' : '';
+    d.diameter = ((info.match(/\(([^)]*)\)\s*$/) || [])[1] || '').trim();
+
+    // 매입처(시트단위·다이아 지표) + 추가설명(다이아 상품명)
+    d.vendor    = inboundVendor();
+    d.extraDesc = noteField(findRowNote(tr), '추가설명');
+
+    // 셀11: 판매가
+    const p = (((cells[C.price] && cells[C.price].innerText) || '')).replace(/[^\d]/g, '');
+    if (p) d.price = Number(p);
+
+    return d;
+  }
+
+  /* ====================================================================== *
    *  공개 API
    * ====================================================================== */
-  async function collect() {
+  async function collectSearch(chosen) {
     const CFG = window.UBCFG;
-    const chosen = getCheckedBarcodes();
-    if (!chosen.length) {
-      alert('인쇄할 상품을 먼저 선택하세요.');
-      return null;
-    }
     const form = getForm2();
     const barcodes = chosen.map(b => b.value);
     log('선택 바코드:', barcodes, 'sKey:', getSKey(form));
@@ -327,6 +447,20 @@
       log('출처 A에 없음 → 목록 폴백:', bc);
       return listByBarcode[bc] || emptyLabel(bc);
     });
+    return result;
+  }
+
+  /* 페이지 종류에 따라 수집 경로를 고르고, 고객명을 공통 정규화한다. */
+  async function collect() {
+    const chosen = getCheckedBarcodes();
+    if (!chosen.length) {
+      alert('인쇄할 상품을 먼저 선택하세요.');
+      return null;
+    }
+    const result = isInboundPage()
+      ? chosen.map(scrapeInboundRow)            // 출처 C: 상품입고 목록
+      : await collectSearch(chosen);            // 출처 A/B: 검색 페이지
+    (result || []).forEach(d => { if (d && d.partner) d.partner = customerName(d.partner); });
     return result;
   }
 

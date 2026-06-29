@@ -97,6 +97,15 @@ public static class LabelModel
     private static string EffName(LabelItem d)
         => (IsDiamond(d) && !string.IsNullOrEmpty(d.ExtraDesc)) ? d.ExtraDesc : d.ItemName;
 
+    /// <summary>금속/사이즈 — "925"→"Silver925", 사이즈(호수) 있으면 " (…)" 동반.</summary>
+    private static string MetalText(LabelItem d)
+    {
+        string m = d.Metal == "925" ? "Silver925" : d.Metal;
+        bool hasSize = !string.IsNullOrEmpty(d.Diameter);
+        if (string.IsNullOrEmpty(m)) return hasSize ? d.Diameter : "";
+        return hasSize ? $"{m} ({d.Diameter})" : m;
+    }
+
     /// <summary>필드 표시 문자열. f.Text 가 있으면 그것을, 없으면 데이터값.</summary>
     public static string FieldValue(Field f, LabelItem d, FixedConfig cfg)
     {
@@ -108,7 +117,7 @@ public static class LabelModel
             case "price":        return d.Price.HasValue ? d.Price.Value.ToString("#,0") : "";
             case "barcodeLabel": { var px = StoreCode(d.Store, cfg); return string.IsNullOrEmpty(px) ? d.Barcode : $"{px}  {d.Barcode}"; }
             case "bnum2":        return d.Barcode;
-            case "metal":        return string.IsNullOrEmpty(d.Diameter) ? d.Metal : $"{d.Metal} ({d.Diameter})".Trim();
+            case "metal":        return MetalText(d);
             case "weight":       return d.Weight;
             // 다이아: "(주)D102 매장명"(고객 문구 없음). 일반: 기존(회사+구분=매장명).
             case "compCat":      return IsDiamond(d) ? Join("  ", cfg.Company, d.Store) : Join("  ", cfg.Company, d.Category);
