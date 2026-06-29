@@ -39,6 +39,8 @@ static class Program
 
         ApplicationConfiguration.Initialize();
         AppState.Load();
+        if (AppState.Config.AutoStart) Startup.Enable();   // 윈도우 시작 시 자동 실행(기본 ON, 현재 exe로 갱신)
+        else Startup.Disable();
         try { ChromeExt.SyncStableExtension(); } catch { }   // 확장을 안정 경로로 복사(reload 만으로 최신)
         try { ChromeExt.WritePolicy(); } catch { }           // 권한 있으면 정책 기록(없으면 무시)
 
@@ -74,6 +76,15 @@ static class Program
         var test = new ToolStripMenuItem("테스트 인쇄");
         test.Click += (_, _) => Printing.TestPrint();
         menu.Items.Add(test);
+
+        var autostart = new ToolStripMenuItem("윈도우 시작 시 자동 실행") { Checked = AppState.Config.AutoStart, CheckOnClick = true };
+        autostart.Click += (_, _) =>
+        {
+            AppState.Config.AutoStart = autostart.Checked;
+            AppState.SaveConfig();
+            if (autostart.Checked) Startup.Enable(); else Startup.Disable();
+        };
+        menu.Items.Add(autostart);
 
         var regAuto = new ToolStripMenuItem("크롬에 확장 설치 (자동·관리자)");
         regAuto.Click += (_, _) =>

@@ -33,6 +33,9 @@ public class LabelItem
     public string Category { get; set; } = "";
     public string Partner { get; set; } = "";
     public string SetNo { get; set; } = "";
+    public string Store { get; set; } = "";        // 매장명(접두코드·다이아 매장표기)
+    public string Vendor { get; set; } = "";        // 매입처명(다이아 지표: 본디/캐럿)
+    public string ExtraDesc { get; set; } = "";     // 추가설명(다이아 상품명)
 }
 
 /// <summary>고정 설정(회사명/브랜드/프린터/포트). %AppData%\D102LabelPrinter\config.json</summary>
@@ -46,6 +49,7 @@ public class FixedConfig
     public int Port { get; set; } = 17600;
     public double LabelWmm { get; set; } = 60;
     public double LabelHmm { get; set; } = 10;
+    public bool AutoStart { get; set; } = true;     // 윈도우 시작 시 자동 실행(기본 ON)
 }
 
 /// <summary>레이아웃 기본값 + 데이터키→문자열 매핑(확장 label.js 포팅).</summary>
@@ -68,6 +72,31 @@ public static class LabelModel
         new Field{ Key="brandUrl",    Name="브랜드URL",     Type="text", X=42.6, Y=8.4, W=16.8, Fs=1.7, Align="center", Editable=true },
     };
 
+    /// <summary>매장명 → 바코드 접두코드. 미매칭은 기본 접두(LT 등) 유지.</summary>
+    private static readonly (string key, string code)[] StoreCodes =
+    {
+        ("누리엔", "NU"), ("센텀", "CT"), ("울산", "US"), ("대구", "DG"),
+        ("창원", "CW"), ("광주", "GJ"), ("FASHION", "LT"), ("본사", "00"),
+    };
+    public static string StoreCode(string store, FixedConfig cfg)
+    {
+        var s = store ?? "";
+        foreach (var (k, c) in StoreCodes)
+            if (s.IndexOf(k, StringComparison.OrdinalIgnoreCase) >= 0) return c;
+        return cfg.BarcodePrefix;   // 기본(설정값, 보통 LT)
+    }
+
+    /// <summary>다이아 여부 — 매입처명이 본디/캐럿.</summary>
+    public static bool IsDiamond(LabelItem d)
+    {
+        var v = d.Vendor ?? "";
+        return v.Contains("본디") || v.Contains("캐럿");
+    }
+
+    /// <summary>라벨 상품명 — 다이아면 추가설명, 아니면 일반 상품명.</summary>
+    private static string EffName(LabelItem d)
+        => (IsDiamond(d) && !string.IsNullOrEmpty(d.ExtraDesc)) ? d.ExtraDesc : d.ItemName;
+
     /// <summary>필드 표시 문자열. f.Text 가 있으면 그것을, 없으면 데이터값.</summary>
     public static string FieldValue(Field f, LabelItem d, FixedConfig cfg)
     {
@@ -75,14 +104,16 @@ public static class LabelModel
         switch (f.Key)
         {
             case "company":      return cfg.Company;
-            case "itemName":     return d.ItemName;
+            case "itemName":     return EffName(d);
             case "price":        return d.Price.HasValue ? d.Price.Value.ToString("#,0") : "";
-            case "barcodeLabel": return string.IsNullOrEmpty(cfg.BarcodePrefix) ? d.Barcode : $"{cfg.BarcodePrefix}  {d.Barcode}";
+            case "barcodeLabel": { var px = StoreCode(d.Store, cfg); return string.IsNullOrEmpty(px) ? d.Barcode : $"{px}  {d.Barcode}"; }
             case "bnum2":        return d.Barcode;
             case "metal":        return string.IsNullOrEmpty(d.Diameter) ? d.Metal : $"{d.Metal} ({d.Diameter})".Trim();
             case "weight":       return d.Weight;
-            case "compCat":      return Join("  ", cfg.Company, d.Category);
-            case "namePartner":  return Join("", d.ItemName, Join("", d.Partner, d.SetNo));
+            // 다이아: "(주)D102 매장명"(고객 문구 없음). 일반: 기존(회사+구분=매장명).
+            case "compCat":      return IsDiamond(d) ? Join("  ", cfg.Company, d.Store) : Join("  ", cfg.Company, d.Category);
+            // 상품명/고객명 사이 "/" 구분.
+            case "namePartner":  return Join("/", EffName(d), Join("", d.Partner, d.SetNo));
             case "brandTop":     return cfg.BrandTop;
             case "brandUrl":     return cfg.BrandUrl;
             default:             return "";
