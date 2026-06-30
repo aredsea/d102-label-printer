@@ -86,16 +86,10 @@ public static class LabelModel
         return cfg.BarcodePrefix;   // 기본(설정값, 보통 LT)
     }
 
-    /// <summary>다이아 여부 — 매입처명이 본디/캐럿.</summary>
-    public static bool IsDiamond(LabelItem d)
-    {
-        var v = d.Vendor ?? "";
-        return v.Contains("본디") || v.Contains("캐럿");
-    }
-
-    /// <summary>라벨 상품명 — 다이아면 추가설명, 아니면 일반 상품명.</summary>
+    /// <summary>라벨 상품명 — 추가설명 있으면 그걸 사용(작업자가 고객명 포함해 기입),
+    /// 없으면 일반 상품명으로 폴백. (전 매장 공통 규칙, 2026-06-30~)</summary>
     private static string EffName(LabelItem d)
-        => (IsDiamond(d) && !string.IsNullOrEmpty(d.ExtraDesc)) ? d.ExtraDesc : d.ItemName;
+        => !string.IsNullOrEmpty(d.ExtraDesc) ? d.ExtraDesc : d.ItemName;
 
     /// <summary>금속/사이즈 — "925"→"Silver925", 사이즈(호수) 있으면 " (…)" 동반.</summary>
     private static string MetalText(LabelItem d)
@@ -119,11 +113,10 @@ public static class LabelModel
             case "bnum2":        return d.Barcode;
             case "metal":        return MetalText(d);
             case "weight":       return d.Weight;
-            // 다이아: "(주)D102 매장명"(고객 문구 없음). 일반: 기존(회사+구분=매장명).
-            case "compCat":      return IsDiamond(d) ? Join("  ", cfg.Company, d.Store) : Join("  ", cfg.Company, d.Category);
-            // 다이아: 추가설명만(작업자가 추가설명에 고객명 기입 → 중복방지로 고객명 미부착).
-            //  일반: 상품명/고객명 "/" 구분.
-            case "namePartner":  return IsDiamond(d) ? EffName(d) : Join("/", EffName(d), Join("", d.Partner, d.SetNo));
+            // "(주)D102 매장명" (전 매장 공통).
+            case "compCat":      return Join("  ", cfg.Company, d.Store);
+            // 추가설명만 출력. 작업자가 추가설명에 고객명을 기입하므로 고객명 미부착(중복방지).
+            case "namePartner":  return EffName(d);
             case "brandTop":     return cfg.BrandTop;
             case "brandUrl":     return cfg.BrandUrl;
             default:             return "";
