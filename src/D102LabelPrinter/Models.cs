@@ -50,6 +50,10 @@ public class FixedConfig
     public double LabelWmm { get; set; } = 60;
     public double LabelHmm { get; set; } = 10;
     public bool AutoStart { get; set; } = true;     // 윈도우 시작 시 자동 실행(기본 ON)
+    /// <summary>전표 자동 분할조회 캐시 디렉토리. null/빈값 = 기본 %LocalAppData%\D102LabelPrinter\cache</summary>
+    public string CachePath { get; set; } = "";
+    /// <summary>사용 현황/캐시 효과 측정(events.jsonl) 켜기.</summary>
+    public bool TelemetryEnabled { get; set; } = true;
 }
 
 /// <summary>레이아웃 기본값 + 데이터키→문자열 매핑(확장 label.js 포팅).</summary>

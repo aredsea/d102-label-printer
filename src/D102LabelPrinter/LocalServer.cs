@@ -72,6 +72,21 @@ public class LocalServer
             if (path == "/print") { HandlePrint(res, body, false); return; }
             if (path == "/preview") { HandlePrint(res, body, true); return; }
 
+            // ---- 전표 자동 분할조회 캐시 ----------------------------------------
+            if (path == "/cache/get") { HandleCacheGet(res, req); return; }
+            if (path == "/cache/put") { HandleCachePut(res, body); return; }
+            if (path == "/cache/stats") { WriteJson(res, CacheStore.Stats()); return; }
+            if (path == "/cache/clear") { HandleCacheClear(res, body); return; }
+            // ---- 사용 현황 / 캐시 효과 측정 -------------------------------------
+            if (path == "/telemetry/event") { HandleTelemetryEvent(res, body); return; }
+            if (path == "/telemetry/summary")
+            {
+                int d = 7;
+                int.TryParse(req.QueryString["days"] ?? "7", out d);
+                WriteJson(res, Telemetry.Summary(d));
+                return;
+            }
+
             res.StatusCode = 404;
             WriteJson(res, new { ok = false, error = "unknown path" });
         }
@@ -97,6 +112,65 @@ public class LocalServer
         RawPrinter.SendZpl(AppState.Config.PrinterName, zpl);
         Log?.Invoke($"인쇄 {items.Count}건 → {ActivePrinter()}");
         WriteJson(res, new { ok = true, printed = items.Count, printer = ActivePrinter() });
+    }
+
+    private void HandleCacheGet(HttpListenerResponse res, HttpListenerRequest req)
+    {
+        string p = req.QueryString["path"] ?? "";
+        string date = req.QueryString["date"] ?? "";
+        if (string.IsNullOrEmpty(p) || string.IsNullOrEmpty(date))
+        { WriteJson(res, new { ok = false, error = "path,date required" }); return; }
+        var entry = CacheStore.Get(p, date);
+        if (entry == null) WriteJson(res, new { ok = true, hit = false });
+        else WriteJson(res, new { ok = true, hit = true, entry });
+    }
+
+    private void HandleCachePut(HttpListenerResponse res, string body)
+    {
+        try
+        {
+            var d = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
+            string p = d.GetValueOrDefault("path").ValueKind == JsonValueKind.String ? d["path"].GetString() : "";
+            string date = d.GetValueOrDefault("date").ValueKind == JsonValueKind.String ? d["date"].GetString() : "";
+            string html = d.GetValueOrDefault("html").ValueKind == JsonValueKind.String ? d["html"].GetString() : "";
+            if (string.IsNullOrEmpty(p) || string.IsNullOrEmpty(date))
+            { WriteJson(res, new { ok = false, error = "path,date required" }); return; }
+            CacheStore.Put(p, date, html);
+            WriteJson(res, new { ok = true });
+        }
+        catch (Exception e) { WriteJson(res, new { ok = false, error = e.Message }); }
+    }
+
+    private void HandleCacheClear(HttpListenerResponse res, string body)
+    {
+        int? older = null;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                var d = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
+                if (d.TryGetValue("olderThanDays", out var v) && v.ValueKind == JsonValueKind.Number)
+                    older = v.GetInt32();
+            }
+        }
+        catch { }
+        int removed = CacheStore.Clear(older);
+        WriteJson(res, new { ok = true, removed });
+    }
+
+    private void HandleTelemetryEvent(HttpListenerResponse res, string body)
+    {
+        try
+        {
+            var d = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
+            string type = d.GetValueOrDefault("type").ValueKind == JsonValueKind.String ? d["type"].GetString() : "";
+            if (string.IsNullOrEmpty(type)) { WriteJson(res, new { ok = false, error = "type required" }); return; }
+            // type 외 모든 필드를 그대로 payload로
+            d.Remove("type");
+            Telemetry.Add(type, d);
+            WriteJson(res, new { ok = true });
+        }
+        catch (Exception e) { WriteJson(res, new { ok = false, error = e.Message }); }
     }
 
     private static string ActivePrinter() =>

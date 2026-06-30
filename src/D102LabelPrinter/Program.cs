@@ -116,6 +116,26 @@ static class Program
         menu.Items.Add(regManual);
 
         menu.Items.Add(new ToolStripSeparator());
+
+        // ---- 전표 캐시 + 텔레메트리 ----------------------------------------
+        var cacheStats = new ToolStripMenuItem("전표 캐시·사용 통계…");
+        cacheStats.Click += (_, _) => ShowCacheStats();
+        menu.Items.Add(cacheStats);
+
+        var cacheFolder = new ToolStripMenuItem("캐시 폴더 열기");
+        cacheFolder.Click += (_, _) => {
+            try { Directory.CreateDirectory(CacheStore.Dir); System.Diagnostics.Process.Start("explorer.exe", $"\"{CacheStore.Dir}\""); } catch { }
+        };
+        menu.Items.Add(cacheFolder);
+
+        var cacheClear = new ToolStripMenuItem("캐시 비우기 (30일 이전)");
+        cacheClear.Click += (_, _) => {
+            int n = CacheStore.Clear(30);
+            MessageBox.Show($"{n}개 캐시 항목 삭제됨.", "D102 라벨 인쇄", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        };
+        menu.Items.Add(cacheClear);
+
+        menu.Items.Add(new ToolStripSeparator());
         var exit = new ToolStripMenuItem("종료");
         exit.Click += (_, _) => Application.Exit();
         menu.Items.Add(exit);
@@ -146,6 +166,31 @@ static class Program
             AppState.Config.PrinterName = combo.SelectedItem.ToString();
             AppState.SaveConfig();
         }
+    }
+
+    static void ShowCacheStats()
+    {
+        var s = CacheStore.Stats();
+        var t = Telemetry.Summary(7);
+        string fmtMb(long b) => (b / 1024.0 / 1024).ToString("0.00") + " MB";
+        string fmtAgo(long ms) => ms == 0 ? "-" : DateTimeOffset.FromUnixTimeMilliseconds(ms).ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+        string savedTxt = t.SavedMsTotal > 60000
+            ? $"{t.SavedMsTotal / 60000.0:0.0}분"
+            : $"{t.SavedMsTotal / 1000.0:0.0}초";
+        string msg =
+            $"[캐시]\n" +
+            $"  경로:  {s.Path}\n" +
+            $"  엔트리: {s.Entries}개  ({fmtMb(s.SizeBytes)})\n" +
+            $"  가장 오래된: {fmtAgo(s.OldestMs)}\n" +
+            $"  가장 최근:   {fmtAgo(s.NewestMs)}\n\n" +
+            $"[최근 {t.Days}일 사용]\n" +
+            $"  페이지 로드: {t.PageLoads}회 (평균 {t.AvgLoadMs}ms)\n" +
+            $"  캐시 hit:   {t.CacheHits}\n" +
+            $"  캐시 miss:  {t.CacheMiss}\n" +
+            $"  적중률:     {t.HitRate * 100:0.0}%\n" +
+            $"  분할 검색:  {t.Searches}회\n" +
+            $"  절약 시간:  약 {savedTxt} (캐시 hit 없었을 때 추가됐을 서버 응답 합)";
+        MessageBox.Show(msg, "D102 캐시·사용 통계", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     static SettingsForm _settings;
