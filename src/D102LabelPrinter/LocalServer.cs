@@ -44,7 +44,7 @@ public class LocalServer
         }
     }
 
-    private void Handle(HttpListenerContext ctx)
+    private async void Handle(HttpListenerContext ctx)
     {
         var req = ctx.Request;
         var res = ctx.Response;
@@ -71,6 +71,12 @@ public class LocalServer
 
             if (path == "/print") { HandlePrint(res, body, false); return; }
             if (path == "/preview") { HandlePrint(res, body, true); return; }
+            if (path == "/ext/sync")
+            {
+                var r = await ExtSync.SyncAsync();
+                WriteJson(res, new { ok = true, changed = r.Changed, updated = r.Updated, pending = r.Pending, remoteVersion = r.RemoteVersion });
+                return;
+            }
 
             // ---- 전표 자동 분할조회 캐시 ----------------------------------------
             if (path == "/cache/get") { HandleCacheGet(res, req); return; }

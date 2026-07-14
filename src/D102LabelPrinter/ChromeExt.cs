@@ -4,16 +4,19 @@ using Microsoft.Win32;
 namespace D102LabelPrinter;
 
 /// <summary>
-/// 크롬 확장 등록. force-install 정책은 Software\Policies(관리자 전용)에 써야 하므로
-/// 관리자 권한이 필요하다. 비관리자에선 실패 → 수동 로드(폴더 동봉)로 폴백.
+/// 크롬 확장 안정 경로·허용 목록 관리.
 /// </summary>
 public static class ChromeExt
 {
     public const string ExtId = "kejfpekfhpjlaifonfdlegmnoglaaphf";
-    public const string UpdateUrl = "https://raw.githubusercontent.com/aredsea/ubishop-barcode-ext/main/update.xml";
 
     const string ForceList = @"SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist";
     const string Settings = @"SOFTWARE\Policies\Google\Chrome\ExtensionSettings";
+    static readonly string[] AllowlistPaths =
+    {
+        @"SOFTWARE\Policies\Google\Chrome\ExtensionInstallAllowlist",
+        @"SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallAllowlist"
+    };
 
     /// <summary>동봉된 확장 폴더(설치본 내부, 업데이트마다 경로 바뀔 수 있음).</summary>
     public static string BundledExtensionDir => Path.Combine(AppContext.BaseDirectory, "extension");
@@ -41,62 +44,58 @@ public static class ChromeExt
         catch { }
     }
 
-    /// <summary>force-install 정책 기록(관리자 필요). HKLM 우선, HKCU 보조. true=성공.</summary>
-    public static bool WritePolicy()
+    /// <summary>압축해제 확장 허용 목록 기록. HKLM/HKCU 권한이 없으면 조용히 무시.</summary>
+    public static void AddToAllowlist()
     {
-        bool any = false;
-        foreach (var root in new[] { Registry.LocalMachine, Registry.CurrentUser })
-        {
-            try
-            {
-                using (var fl = root.CreateSubKey(ForceList))
-                    fl.SetValue("1", $"{ExtId};{UpdateUrl}");
-                using (var es = root.CreateSubKey($@"{Settings}\{ExtId}"))
-                {
-                    es.SetValue("installation_mode", "force_installed");
-                    es.SetValue("update_url", UpdateUrl);
-                }
-                any = true;
-            }
-            catch { /* 권한 없음 — 다음 루트 시도 */ }
-        }
-        return any;
+        TryAddToAllowlist(Registry.LocalMachine);
+        TryAddToAllowlist(Registry.CurrentUser);
     }
 
-    /// <summary>이미 정책이 있는지(HKLM 또는 HKCU).</summary>
-    public static bool IsPolicySet()
+    /// <summary>관리자 권한으로 HKLM 확장 허용 목록 기록.</summary>
+    public static bool AddToAllowlistElevated()
     {
-        foreach (var root in new[] { Registry.LocalMachine, Registry.CurrentUser })
-        {
-            try
-            {
-                using var fl = root.OpenSubKey(ForceList);
-                if (fl?.GetValue("1") is string v && v.StartsWith(ExtId)) return true;
-            }
-            catch { }
-        }
-        return false;
-    }
-
-    /// <summary>비관리자에서 호출 → 관리자 권한으로 자기 자신 재실행(--register-ext)해 정책 기록.</summary>
-    public static bool RegisterElevated()
-    {
-        if (IsPolicySet()) return true;
-        if (WritePolicy()) return true;   // 이미 관리자면 바로 성공
+        AddToAllowlist();
+        if (IsAllowlistSet(Registry.LocalMachine)) return true;
         try
         {
             var psi = new ProcessStartInfo
             {
                 FileName = Process.GetCurrentProcess().MainModule.FileName,
-                Arguments = "--register-ext",
+                Arguments = "--allowlist-ext",
                 UseShellExecute = true,
-                Verb = "runas"            // UAC 승격
+                Verb = "runas"
             };
-            var p = Process.Start(psi);
-            p.WaitForExit(15000);
-            return IsPolicySet();
+            using var p = Process.Start(psi);
+            p?.WaitForExit(15000);
+            return IsAllowlistSet(Registry.LocalMachine);
         }
-        catch { return false; }            // 사용자가 UAC 취소 등
+        catch { return false; }
+    }
+
+    private static bool TryAddToAllowlist(RegistryKey root)
+    {
+        bool all = true;
+        foreach (string path in AllowlistPaths)
+        {
+            try { using (var key = root.CreateSubKey(path)) key.SetValue("1", ExtId); }
+            catch { all = false; }
+        }
+        return all;
+    }
+
+    private static bool IsAllowlistSet(RegistryKey root)
+    {
+        try
+        {
+            foreach (string path in AllowlistPaths)
+            {
+                using var key = root.OpenSubKey(path);
+                if (!string.Equals(key?.GetValue("1") as string, ExtId, StringComparison.Ordinal))
+                    return false;
+            }
+            return true;
+        }
+        catch { return false; }
     }
 
     public static void Unregister()

@@ -8,6 +8,7 @@ static class Program
     static LocalServer _server;
     static NotifyIcon _tray;
     static System.Drawing.Icon _appIcon;
+    static System.Threading.Timer _extSyncTimer;
 
     /// <summary>앱 아이콘(penguin_tray.ico). 없으면 시스템 기본.</summary>
     public static System.Drawing.Icon AppIcon()
@@ -25,14 +26,21 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
-        // Velopack: 설치/업데이트/제거 훅 처리(반드시 최상단). 확장도 함께 등록.
+        // Velopack: 설치/업데이트/제거 훅 처리(반드시 최상단). 무용지물 확장 정책도 함께 제거.
         VelopackApp.Build()
-            .OnAfterInstallFastCallback(_ => { try { ChromeExt.WritePolicy(); } catch { } })
+            .OnAfterInstallFastCallback(_ => { try { ChromeExt.Unregister(); } catch { } })
             .OnBeforeUninstallFastCallback(_ => { try { ChromeExt.Unregister(); } catch { } })
             .Run();
 
-        if (args.Length >= 1 && args[0] == "--register-ext") { ChromeExt.WritePolicy(); return; }  // 관리자 승격 인스턴스
+        if (args.Length >= 1 && args[0] == "--allowlist-ext") { ChromeExt.AddToAllowlist(); return; }  // 관리자 승격 인스턴스
         if (args.Length >= 2 && args[0] == "--selftest") { SelfTest.Run(args[1]); return; }
+        if (args.Length >= 1 && args[0] == "--test-sync")   // ExtSync 실측 하네스(WinExe 콘솔 없음 → 파일 기록)
+        {
+            var r = ExtSync.SyncAsync().GetAwaiter().GetResult();
+            File.WriteAllText(Path.Combine(Path.GetTempPath(), "ub-test-sync.txt"),
+                $"changed={r.Changed} updated={r.Updated} pending={r.Pending} remoteVer={r.RemoteVersion} err={r.Error}");
+            return;
+        }
 
         using var mutex = new Mutex(true, "D102LabelPrinter_singleton", out bool isNew);
         if (!isNew) return;   // 중복 실행 방지
@@ -42,7 +50,14 @@ static class Program
         if (AppState.Config.AutoStart) Startup.Enable();   // 윈도우 시작 시 자동 실행(기본 ON, 현재 exe로 갱신)
         else Startup.Disable();
         try { ChromeExt.SyncStableExtension(); } catch { }   // 확장을 안정 경로로 복사(reload 만으로 최신)
-        try { ChromeExt.WritePolicy(); } catch { }           // 권한 있으면 정책 기록(없으면 무시)
+        _ = ExtSync.SyncAsync();
+        try { ChromeExt.Unregister(); } catch { }             // 무용지물 force-install 정책 잔재 제거
+        ChromeExt.AddToAllowlist();                            // Edge/Whale 개발자모드 경고 억제 시도
+        _extSyncTimer = new System.Threading.Timer(async _ =>
+        {
+            await ExtSync.SyncAsync();
+            ExtSync.FlushPendingIfChromeClosed();
+        }, null, 1200000, 1200000);
 
         _ = Updater.CheckAsync();   // 백그라운드 자동업데이트 확인
 
@@ -86,17 +101,17 @@ static class Program
         };
         menu.Items.Add(autostart);
 
-        var regAuto = new ToolStripMenuItem("크롬에 확장 설치 (자동·관리자)");
-        regAuto.Click += (_, _) =>
+        var allowlist = new ToolStripMenuItem("Edge/Whale 확장 경고 끄기 (관리자)");
+        allowlist.Click += (_, _) =>
         {
-            bool ok = ChromeExt.RegisterElevated();
+            bool ok = ChromeExt.AddToAllowlistElevated();
             MessageBox.Show(ok
-                ? "확장 등록 완료.\n크롬을 완전히 닫았다가(트레이/작업관리자에 chrome 없게) 다시 여세요.\n그래도 안 보이면 \"확장 수동 설치\"를 쓰세요."
-                : "자동 설치 실패(관리자 취소 또는 정책 미적용).\n\"확장 수동 설치(폴더 열기)\"로 진행하세요.",
+                ? "확장 경고 억제 정책 등록 완료.\n브라우저를 완전히 닫았다가 다시 여세요."
+                : "정책 등록 실패(관리자 취소 또는 정책 미적용).",
                 "D102 라벨 인쇄", MessageBoxButtons.OK,
                 ok ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
         };
-        menu.Items.Add(regAuto);
+        menu.Items.Add(allowlist);
 
         var regManual = new ToolStripMenuItem("확장 수동 설치/새로고침 (폴더 열기)");
         regManual.Click += (_, _) =>
